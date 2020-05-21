@@ -138,6 +138,8 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
           time--;
           if (time == 0) {
             phase = Phase.done;
+            timer.cancel();
+            answerTimer.stop();
           }
         });
       });
