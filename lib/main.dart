@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:audioplayers/audio_cache.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -120,6 +122,7 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
   Stopwatch answerTimer;
   List<_Match> matches;
   bool errored = false;
+  Sounds sounds = Sounds();
 
   @override
   void initState() {
@@ -132,6 +135,7 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
   void next() {
     if (phase == Phase.starting) {
       phase = Phase.playing;
+      sounds.start();
       answerTimer = Stopwatch();
       timer = Timer.periodic(Duration(seconds: 1), (timer) {
         setState(() {
@@ -140,11 +144,17 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
             phase = Phase.done;
             timer.cancel();
             answerTimer.stop();
+            sounds.stop();
+            if (score >= 30)
+              sounds.bigwin();
+            else
+              sounds.win();
           }
         });
       });
       score = 0;
     } else {
+      sounds.correct();
       if (!errored) {
         score++;
       }
@@ -161,6 +171,7 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
     switch (phase) {
       case Phase.starting:
         return StartTimer(
+          sounds: sounds,
           onReady: () {
             setState(next);
           },
@@ -208,6 +219,7 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
           setState(next);
         } else {
           errored = true;
+          sounds.error();
         }
       },
     );
@@ -216,8 +228,9 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
 
 class StartTimer extends StatefulWidget {
   final VoidCallback onReady;
+  final Sounds sounds;
 
-  const StartTimer({Key key, this.onReady}) : super(key: key);
+  const StartTimer({Key key, this.sounds, this.onReady}) : super(key: key);
 
   @override
   _StartTimerState createState() => _StartTimerState();
@@ -239,6 +252,7 @@ class _StartTimerState extends State<StartTimer> with TickerProviderStateMixin {
       if (status == AnimationStatus.completed) {
         setState(() {
           n--;
+          widget.sounds?.startTimerBeep();
           if (n > 0) {
             controller.forward(from: 0);
           } else {
@@ -316,4 +330,53 @@ class Counter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DecoratedBox(decoration: ShapeDecoration(color: color, shape: CircleBorder()));
+}
+
+class Sounds {
+  AudioCache player;
+  AudioPlayer music;
+
+  Sounds() {
+    player = AudioCache(prefix: 'sounds/');
+    player.loadAll([
+      'smb_bump.wav',
+      'smb_1-up.wav',
+      'music.mp3',
+      'smb_fireworks.wav',
+      'smb_stage_clear.wav',
+      'smb_world_clear.wav',
+    ]);
+  }
+
+  error() {
+    player.play('smb_bump.wav');
+  }
+
+  correct() {
+    player.play('smb_1-up.wav');
+  }
+
+  start() async {
+    await stop();
+    music = await player.loop('music.mp3');
+  }
+
+  stop() async {
+    if (music != null) {
+      await music.stop();
+      music = null;
+    }
+  }
+
+  void startTimerBeep() {
+    player.play('smb_fireworks.wav');
+  }
+
+  void win() {
+    player.play('smb_stage_clear.wav');
+  }
+
+  void bigwin() {
+    player.play('smb_world_clear.wav');
+  }
 }
