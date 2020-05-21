@@ -43,12 +43,25 @@ class LevelSelector extends StatelessWidget {
           children: <Widget>[
             FlatButton(
               child: Text('Numbers 1-5', style: big),
-              onPressed: () => numbers(context, min: 1, max: 5, step: 1),
+              onPressed: () => numbers(
+                context,
+                max: 5,
+              ),
             ),
             SizedBox(height: 48),
             FlatButton(
               child: Text('Numbers 1-10', style: big),
-              onPressed: () => numbers(context, min: 1, max: 10, step: 1),
+              onPressed: () => numbers(context, max: 10),
+            ),
+            SizedBox(height: 48),
+            FlatButton(
+              child: Text('Numbers 1-20', style: big),
+              onPressed: () => numbers(context, max: 20, frameSize: 10),
+            ),
+            SizedBox(height: 48),
+            FlatButton(
+              child: Text('Doubles 1-10', style: big),
+              onPressed: () => doubles(context, max: 20, frameSize: 10),
             )
           ],
         ),
@@ -56,24 +69,56 @@ class LevelSelector extends StatelessWidget {
     );
   }
 
-  void numbers(BuildContext context, {int min, int max, int step}) {
+  void numbers(BuildContext context, {int min = 1, int max, int step = 1, int frameSize = 5}) {
     Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => NumberMatchGame(min: min, max: max, step: step),
+          builder: (context) => NumberMatchGame(
+            min: min,
+            max: max,
+            step: step,
+            frameSize: frameSize,
+          ),
+        ));
+  }
+
+  void doubles(BuildContext context, {int min = 1, int max, int step = 1, int frameSize = 5}) {
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DoubleMatchGame(
+            min: min,
+            max: max,
+            step: step,
+            frameSize: frameSize,
+          ),
         ));
   }
 }
 
-class NumberMatchGame extends StatefulWidget {
+abstract class FrameGameBase extends StatefulWidget {
   final int min;
   final int max;
   final int step;
+  final int frameSize;
 
-  NumberMatchGame({Key key, this.min, this.max, this.step}) : super(key: key);
+  FrameGameBase({Key key, this.min, this.max, this.step, this.frameSize = 5}) : super(key: key);
+}
+
+class NumberMatchGame extends FrameGameBase {
+  NumberMatchGame({Key key, int min, int max, int step, int frameSize})
+      : super(key: key, min: min, max: max, step: step, frameSize: frameSize);
 
   @override
   _NumberMatchGameState createState() => _NumberMatchGameState();
+}
+
+class DoubleMatchGame extends FrameGameBase {
+  DoubleMatchGame({Key key, int min, int max, int step, int frameSize})
+      : super(key: key, min: min, max: max, step: step, frameSize: frameSize);
+
+  @override
+  _DoubleMatchGameState createState() => _DoubleMatchGameState();
 }
 
 enum Phase {
@@ -82,7 +127,15 @@ enum Phase {
   done,
 }
 
-class _Match extends Comparable<_Match> {
+abstract class _Token {
+  int get number;
+
+  int get answer;
+
+  void record(bool errored, Duration elapsed);
+}
+
+class _Match extends _Token implements Comparable<_Match> {
   final int number;
   int correct = 0;
   int incorrect = 0;
@@ -93,6 +146,8 @@ class _Match extends Comparable<_Match> {
   _Match(this.number, Random rnd) {
     _initial = rnd.nextInt(100);
   }
+
+  int get answer => number;
 
   @override
   int compareTo(_Match other) {
@@ -114,23 +169,22 @@ class _Match extends Comparable<_Match> {
   }
 }
 
-class _NumberMatchGameState extends State<NumberMatchGame> {
+class _DoubleMatch extends _Match {
+  _DoubleMatch(int number, Random rnd) : super(number, rnd);
+
+  @override
+  int get answer => super.answer * 2;
+}
+
+abstract class _FrameGameStateBase<TWidget extends FrameGameBase, TToken extends _Token> extends State<TWidget> {
   Phase phase = Phase.starting;
   int score;
   int time = 60;
   Timer timer;
   Stopwatch answerTimer;
-  List<_Match> matches;
+  List<TToken> matches;
   bool errored = false;
   Sounds sounds = Sounds();
-
-  @override
-  void initState() {
-    super.initState();
-
-    final rnd = Random();
-    matches = [for (int i = widget.min; i <= widget.max; i += widget.step) _Match(i, rnd)];
-  }
 
   void next() {
     if (phase == Phase.starting) {
@@ -182,10 +236,10 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
           children: [
             Row(children: [Text("Score: $score", style: small), Spacer(), Text(time.toString(), style: small)]),
             Spacer(),
-            Center(child: FiveFrame.redCounters(matches[0].number)),
-            if (widget.max > 5) Center(child: FiveFrame.whiteCounters(matches[0].number - 5)),
+            Center(child: redFrame(matches[0].number)),
+            if (max > frameSize) Center(child: whiteFrame(matches[0].number - frameSize)),
             Spacer(),
-            for (final group in options()) Center(child: FiveFrame(group)),
+            for (final group in options()) Center(child: frame(group)),
             Spacer(),
           ],
         );
@@ -200,13 +254,13 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
     List<Widget> group = [];
     for (int i = widget.min; i <= widget.max; i += widget.step) {
       group.add(buildFlatButton(i));
-      if (group.length == 5) {
+      if (group.length == frameSize) {
         yield group;
         group = [];
       }
     }
     if (group.length > 0) {
-      while (group.length < 5) group.add(Counter.none());
+      while (group.length < frameSize) group.add(Counter.none());
       yield group;
     }
   }
@@ -215,7 +269,7 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
     return FlatButton(
       child: Text(i.toString(), style: small),
       onPressed: () {
-        if (i == matches[0].number) {
+        if (i == matches[0].answer) {
           setState(next);
         } else {
           errored = true;
@@ -223,6 +277,36 @@ class _NumberMatchGameState extends State<NumberMatchGame> {
         }
       },
     );
+  }
+
+  int get frameSize => widget.frameSize;
+
+  int get max => widget.max;
+
+  Widget redFrame(int c) => Frame.redCounters(c, frameSize);
+
+  Widget whiteFrame(int c) => Frame.whiteCounters(c, frameSize);
+
+  Widget frame(List<Widget> cells) => Frame(cells);
+}
+
+class _NumberMatchGameState extends _FrameGameStateBase<NumberMatchGame, _Match> {
+  @override
+  void initState() {
+    super.initState();
+
+    final rnd = Random();
+    matches = [for (int i = widget.min; i <= widget.max; i += widget.step) _Match(i, rnd)];
+  }
+}
+
+class _DoubleMatchGameState extends _FrameGameStateBase<DoubleMatchGame, _Match> {
+  @override
+  void initState() {
+    super.initState();
+
+    final rnd = Random();
+    matches = [for (int i = widget.min; i <= widget.max / 2; i += widget.step) _DoubleMatch(i, rnd)];
   }
 }
 
@@ -289,17 +373,17 @@ class _StartTimerState extends State<StartTimer> with TickerProviderStateMixin {
   }
 }
 
-class FiveFrame extends StatelessWidget {
+class Frame extends StatelessWidget {
   final List<Widget> cells;
 
-  FiveFrame(this.cells);
+  Frame(this.cells);
 
-  factory FiveFrame.redCounters(int c) => FiveFrame.counters(c, Counter.red());
+  factory Frame.redCounters(int c, int size) => Frame.counters(c, size, Counter.red());
 
-  factory FiveFrame.whiteCounters(int c) => FiveFrame.counters(c, Counter.white());
+  factory Frame.whiteCounters(int c, int size) => Frame.counters(c, size, Counter.white());
 
-  factory FiveFrame.counters(int c, Widget counter) =>
-      FiveFrame([for (int x = 0; x < min(5, c); x++) counter, for (int x = max(0, c); x < 5; x++) Container()]);
+  factory Frame.counters(int c, int size, Widget counter) =>
+      Frame([for (int x = 0; x < min(size, c); x++) counter, for (int x = max(0, c); x < size; x++) Container()]);
 
   @override
   Widget build(BuildContext context) => Row(
